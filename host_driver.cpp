@@ -219,15 +219,6 @@ void run_benchmark(int64_t data_size_mb, int block_num, int repeat, int device_i
     cout << "Bandwidth : " << bandwidth_gbs << " GB/s" << endl;
     cout << "Elements  : " << aligned_elements << endl;
     cout << "Blocks    : " << block_num << endl;
-
-    error = rtFree(x0_hbm);
-    EXPECT_EQ(error, RT_ERROR_NONE);
-    error = rtFree(y0_hbm);
-    EXPECT_EQ(error, RT_ERROR_NONE);
-    error = rtStreamDestroy(stream);
-    EXPECT_EQ(error, RT_ERROR_NONE);
-
-    delete[] buffer;
 }
 
 int main(int argc, char *argv[]) {
