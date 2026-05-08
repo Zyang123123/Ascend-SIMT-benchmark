@@ -271,6 +271,10 @@ def generate_configs(sweep_config, selected_factors=None):
     configs = []
     for combo in product(*value_lists):
         config = dict(zip(keys, combo))
+        # Skip invalid: thread_num must >= lanes (2^lane_bits)
+        lanes = 1 << config["lane_bits"]
+        if config["thread_num"] < lanes:
+            continue
         configs.append(config)
     return configs
 
