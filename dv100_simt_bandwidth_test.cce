@@ -1,0 +1,63 @@
+#include <math.h>
+// burstlen,fp16测试
+
+#define THREAD_NUM 1024
+#define LANE_MASK 0b111111111
+#define BITS_MOVE 9
+#define UNROLL_LOOP 4
+
+
+__inline__ __simt_vf__ LAUNCH_BOUND(THREAD_NUM) [aicore] void dv100_bandwidth_simt(
+    __gm__ volatile __fp16* input_gm,
+    __gm__ __fp16* output_gm,
+    int64_t repeat,
+    int64_t total_count, // assume 512B aligned
+    int my_block_idx,
+    int my_block_num
+    );
+
+
+extern "C" __global__[aicore] void dv100_bandwidth_test(__gm__ volatile __fp16* input_gm,
+                                        __gm__ __fp16* output_gm,
+                                        int64_t total_count,
+                                        // int dummy0,
+                                        int64_t repeat) {
+  cce::async_invoke<dv100_bandwidth_simt>(cce::dim3{THREAD_NUM},
+      input_gm, output_gm, repeat, total_count, block_idx, block_num);
+}
+
+__inline__ __simt_vf__ LAUNCH_BOUND(THREAD_NUM) [aicore] void dv100_bandwidth_simt(
+    __gm__ volatile __fp16* input_gm,
+    __gm__ __fp16* output_gm,
+    int64_t repeat,
+    int64_t total_count, // assume 512B aligned
+    int my_block_idx,
+    int my_block_num
+    ) {
+  
+  int linear_tid = threadIdx.x;
+  int tid_x = linear_tid & LANE_MASK; // within burst's lane_id
+  int tid_y = linear_tid >> BITS_MOVE; // burst_id
+  constexpr int burst_stride = (LANE_MASK+1) * UNROLL_LOOP; 
+  int block_stride = blockDim.x * UNROLL_LOOP;
+
+  __fp16 dummy_sum = static_cast<__fp16>(0.0f);
+  
+  for (int r = 0; r < repeat; ++r) {
+    for (int64_t i = my_block_idx * block_stride + tid_y * burst_stride + tid_x ; i < total_count; i += my_block_num * block_stride) {
+      __fp16 data[UNROLL_LOOP];
+      #pragma unroll
+      for (int k = 0; k < UNROLL_LOOP; ++k) {
+        data[k] = input_gm[i + k * 32];
+      }
+      #pragma unroll
+      for (int k = 0; k < UNROLL_LOOP; ++k) {
+        dummy_sum += data[k];
+      }
+    }
+  }
+  
+  output_gm[linear_tid + my_block_idx * blockDim.x] = dummy_sum;
+  // 确保所有线程同步并退出
+  __syncthreads();
+}

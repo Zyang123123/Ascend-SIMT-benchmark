@@ -1,0 +1,136 @@
+// ============================================================
+// Ascend DV100 SIMT Bandwidth Benchmark - Kernel Template
+// ============================================================
+// This file is auto-patched by run_benchmark.py.
+// Do NOT edit the BENCHMARK CONFIG section manually.
+// ============================================================
+
+#include <math.h>
+
+// === BENCHMARK CONFIGURATION (auto-patched by run_benchmark.py) ===
+// Data type: 0=fp16, 1=float32, 2=int64
+#define DATA_TYPE_ENUM 0
+// Source memory: 0=GM, 1=L2(cache warmup), 2=UB
+#define SRC_MEMORY 0
+// Access mode: 0=read-only, 1=write-only, 2=read+write
+#define ACCESS_MODE 0
+// Threads per block
+#define THREAD_NUM 1024
+// Lane mask for burst layout (e.g. 0b111111111 = 9 bits = 512 lanes)
+#define LANE_MASK 0b111111111
+// Bits for burst dimension
+#define BITS_MOVE 9
+// Unroll factor
+#define UNROLL_LOOP 4
+// Stride between unrolled accesses (in elements)
+#define STRIDE 32
+// Alignment offset in elements (0 = aligned)
+#define ALIGNMENT_OFFSET 0
+// === END CONFIGURATION ===
+
+// ---------- Derived type selection ----------
+#if DATA_TYPE_ENUM == 0
+  typedef __fp16 bench_dtype;
+  #define DTYPE_SIZE 2
+#elif DATA_TYPE_ENUM == 1
+  typedef float bench_dtype;
+  #define DTYPE_SIZE 4
+#elif DATA_TYPE_ENUM == 2
+  typedef int64_t bench_dtype;
+  #define DTYPE_SIZE 8
+#else
+  #error "Unsupported DATA_TYPE_ENUM"
+#endif
+
+// ---------- Access mode helpers ----------
+#define ACCESS_READ_ONLY  0
+#define ACCESS_WRITE_ONLY 1
+#define ACCESS_READ_WRITE 2
+
+// ---------- Kernel declaration ----------
+__inline__ __simt_vf__ LAUNCH_BOUND(THREAD_NUM) [aicore] void bandwidth_simt(
+    __gm__ volatile bench_dtype* input_gm,
+    __gm__ bench_dtype* output_gm,
+    int64_t repeat,
+    int64_t total_count,
+    int my_block_idx,
+    int my_block_num);
+
+extern "C" __global__[aicore] void dv100_bandwidth_test(
+    __gm__ volatile bench_dtype* input_gm,
+    __gm__ bench_dtype* output_gm,
+    int64_t total_count,
+    int64_t repeat) {
+  cce::async_invoke<bandwidth_simt>(cce::dim3{THREAD_NUM},
+      input_gm, output_gm, repeat, total_count, block_idx, block_num);
+}
+
+// ---------- Kernel implementation ----------
+__inline__ __simt_vf__ LAUNCH_BOUND(THREAD_NUM) [aicore] void bandwidth_simt(
+    __gm__ volatile bench_dtype* input_gm,
+    __gm__ bench_dtype* output_gm,
+    int64_t repeat,
+    int64_t total_count,
+    int my_block_idx,
+    int my_block_num) {
+
+  int linear_tid = threadIdx.x;
+  int tid_x = linear_tid & LANE_MASK;
+  int tid_y = linear_tid >> BITS_MOVE;
+  constexpr int burst_stride = (LANE_MASK + 1) * UNROLL_LOOP;
+  int block_stride = blockDim.x * UNROLL_LOOP;
+
+  bench_dtype dummy_sum = static_cast<bench_dtype>(0);
+
+  // ---- READ path (read-only and read+write) ----
+#if ACCESS_MODE == ACCESS_READ_ONLY || ACCESS_MODE == ACCESS_READ_WRITE
+  #if SRC_MEMORY == 1
+  // L2 warmup: touch data once before measuring
+  for (int64_t wi = my_block_idx * block_stride + tid_y * burst_stride + tid_x;
+       wi < total_count; wi += my_block_num * block_stride) {
+    #pragma unroll
+    for (int k = 0; k < UNROLL_LOOP; ++k) {
+      dummy_sum += input_gm[wi + k * STRIDE];
+    }
+  }
+  // Reset sum after warmup
+  dummy_sum = static_cast<bench_dtype>(0);
+  #endif
+
+  for (int r = 0; r < repeat; ++r) {
+    for (int64_t i = my_block_idx * block_stride + tid_y * burst_stride + tid_x + ALIGNMENT_OFFSET;
+         i < total_count;
+         i += my_block_num * block_stride) {
+      bench_dtype data[UNROLL_LOOP];
+      #pragma unroll
+      for (int k = 0; k < UNROLL_LOOP; ++k) {
+        data[k] = input_gm[i + k * STRIDE];
+      }
+      #pragma unroll
+      for (int k = 0; k < UNROLL_LOOP; ++k) {
+        dummy_sum += data[k];
+      }
+    }
+  }
+#endif
+
+  // ---- WRITE path (write-only and read+write) ----
+#if ACCESS_MODE == ACCESS_WRITE_ONLY || ACCESS_MODE == ACCESS_READ_WRITE
+  {
+    bench_dtype fill_val = static_cast<bench_dtype>(1.0);
+    for (int r = 0; r < repeat; ++r) {
+      for (int64_t i = my_block_idx * block_stride + tid_y * burst_stride + tid_x + ALIGNMENT_OFFSET;
+           i < total_count;
+           i += my_block_num * block_stride) {
+        #pragma unroll
+        for (int k = 0; k < UNROLL_LOOP; ++k) {
+          output_gm[i + k * STRIDE] = fill_val;
+        }
+      }
+    }
+  }
+#endif
+  // Write checksum to prevent dead-code elimination
+  output_gm[linear_tid + my_block_idx * blockDim.x] = dummy_sum;
+  __syncthreads();
+}
