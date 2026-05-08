@@ -54,7 +54,8 @@ DEFAULT_SWEEP = {
     "src_memory":   [0],                   # 0=GM, 1=L2(cache warmup)
     "data_type":    [0],                   # 0=fp16, 1=float32, 2=int64
     "access_mode":  [0],                   # 0=read, 1=write, 2=readwrite
-    "stride":       [32],                  # elements between unrolled accesses
+    "stride_factor": [1],                  # >0: STRIDE = factor * 2^lane_bits; 0: use absolute stride below
+    "stride":       [0],                   # absolute stride in elements (only used when stride_factor=0)
     "lane_bits":    [9],                   # LANE_MASK bits (3..9)
     "unroll_loop":  [4],                   # unroll factor for inner loop
     "thread_num":   [1024],                # threads per block
@@ -103,6 +104,12 @@ def patch_kernel(template_path, output_path, params):
         content = f.read()
 
     lane_mask_str = lane_bits_to_mask(params["lane_bits"])
+    # stride_factor > 0: relative mode (STRIDE = factor * lanes)
+    # stride_factor == 0: absolute mode (use stride value directly)
+    if params["stride_factor"] > 0:
+        stride_abs = params["stride_factor"] * (1 << params["lane_bits"])
+    else:
+        stride_abs = params["stride"]
 
     patches = {
         "DATA_TYPE_ENUM": str(params["data_type"]),
@@ -112,7 +119,7 @@ def patch_kernel(template_path, output_path, params):
         "LANE_MASK":      lane_mask_str,
         "BITS_MOVE":      str(params["lane_bits"]),
         "UNROLL_LOOP":    str(params["unroll_loop"]),
-        "STRIDE":         str(params["stride"]),
+        "STRIDE":         str(stride_abs),
         "ALIGNMENT_OFFSET": str(params["align_offset"]),
     }
 
@@ -191,6 +198,11 @@ def run_benchmark(block_num, data_size_mb, repeat, device_id=0, use_msprof=False
 # ============================================================
 def config_to_row(params, result):
     """Convert a parameter config + result into a CSV row dict."""
+    if params["stride_factor"] > 0:
+        stride_actual = params["stride_factor"] * (1 << params["lane_bits"])
+    else:
+        stride_actual = params["stride"]
+
     row = {
         "timestamp":       datetime.now().isoformat(),
         "src_memory":      params["src_memory"],
@@ -200,7 +212,8 @@ def config_to_row(params, result):
         "dtype_size":      DTYPE_INFO[params["data_type"]]["size"],
         "access_mode":     params["access_mode"],
         "access_mode_name": ACCESS_MODE_NAMES.get(params["access_mode"], "?"),
-        "stride":          params["stride"],
+        "stride_factor":   params["stride_factor"],
+        "stride":          stride_actual,
         "lane_bits":       params["lane_bits"],
         "lane_mask":       lane_bits_to_mask(params["lane_bits"]),
         "lanes":           1 << params["lane_bits"],
@@ -225,7 +238,7 @@ CSV_COLUMNS = [
     "timestamp", "src_memory", "src_memory_name",
     "data_type", "data_type_name", "dtype_size",
     "access_mode", "access_mode_name",
-    "stride", "lane_bits", "lane_mask", "lanes",
+    "stride_factor", "stride", "lane_bits", "lane_mask", "lanes",
     "thread_num", "block_num",
     "align_offset", "data_size_mb", "repeat",
     "bytes_moved", "time_us", "bandwidth_gbs",
@@ -275,6 +288,7 @@ def dedup_compile_configs(configs):
             config["data_type"],
             config["src_memory"],
             config["access_mode"],
+            config["stride_factor"],
             config["stride"],
             config["lane_bits"],
             config["unroll_loop"],
@@ -313,7 +327,7 @@ def run_sweep(sweep_config, selected_factors=None, use_msprof=False, device_id=0
 
         print("=" * 64)
         print(f"Compile: dtype={dtype_name} access={access_name} "
-              f"stride={representative['stride']} lanes={1 << representative['lane_bits']} "
+              f"stride_factor={representative['stride_factor']} lanes={1 << representative['lane_bits']} "
               f"threads={representative['thread_num']} align={representative['align_offset']}")
         print("=" * 64)
 
@@ -361,7 +375,8 @@ PRESETS = {
         "src_memory":   [0, 1],
         "data_type":    [0, 1, 2],
         "access_mode":  [0, 1, 2],
-        "stride":       [32],
+        "stride_factor": [1],
+        "stride":       [0],
         "lane_bits":    [3, 5, 7, 9],
         "unroll_loop":  [4],
         "thread_num":   [512, 1024],
@@ -374,7 +389,8 @@ PRESETS = {
         "src_memory":   [0],
         "data_type":    [0, 1, 2],
         "access_mode":  [0],
-        "stride":       [32],
+        "stride_factor": [1],
+        "stride":       [0],
         "lane_bits":    [9],
         "unroll_loop":  [4],
         "thread_num":   [1024],
@@ -387,7 +403,8 @@ PRESETS = {
         "src_memory":   [0],
         "data_type":    [0],
         "access_mode":  [0],
-        "stride":       [32],
+        "stride_factor": [1],
+        "stride":       [0],
         "lane_bits":    [3, 4, 5, 6, 7, 8, 9],
         "unroll_loop":  [4],
         "thread_num":   [1024],
@@ -400,7 +417,8 @@ PRESETS = {
         "src_memory":   [0],
         "data_type":    [0],
         "access_mode":  [0],
-        "stride":       [32],
+        "stride_factor": [1],
+        "stride":       [0],
         "lane_bits":    [9],
         "unroll_loop":  [4],
         "thread_num":   [1024],
@@ -413,7 +431,8 @@ PRESETS = {
         "src_memory":   [0],
         "data_type":    [0],
         "access_mode":  [0, 1, 2],
-        "stride":       [32],
+        "stride_factor": [1],
+        "stride":       [0],
         "lane_bits":    [9],
         "unroll_loop":  [4],
         "thread_num":   [1024],
@@ -426,7 +445,8 @@ PRESETS = {
         "src_memory":   [0],
         "data_type":    [0],
         "access_mode":  [0],
-        "stride":       [32],
+        "stride_factor": [1],
+        "stride":       [0],
         "lane_bits":    [9],
         "unroll_loop":  [4],
         "thread_num":   [1024],
@@ -439,7 +459,8 @@ PRESETS = {
         "src_memory":   [0],
         "data_type":    [0],
         "access_mode":  [0],
-        "stride":       [1, 2, 4, 8, 16, 32, 64, 128, 256, 512],
+        "stride_factor": [1, 2, 4, 8, 16, 32],
+        "stride":       [0],
         "lane_bits":    [9],
         "unroll_loop":  [4],
         "thread_num":   [1024],
@@ -452,7 +473,8 @@ PRESETS = {
         "src_memory":   [0],
         "data_type":    [0],
         "access_mode":  [0],
-        "stride":       [32],
+        "stride_factor": [1],
+        "stride":       [0],
         "lane_bits":    [9],
         "unroll_loop":  [4],
         "thread_num":   [64, 128, 256, 512, 1024],
@@ -533,8 +555,15 @@ def main():
             dtype_name = DTYPE_INFO[cfg["data_type"]]["name"]
             access_name = ACCESS_MODE_NAMES.get(cfg["access_mode"], "?")
             src_name = SRC_MEMORY_NAMES.get(cfg["src_memory"], "?")
+            if cfg["stride_factor"] > 0:
+                stride_abs = cfg["stride_factor"] * (1 << cfg["lane_bits"])
+                stride_desc = f"factor={cfg['stride_factor']}({stride_abs}el)"
+            else:
+                stride_abs = cfg["stride"]
+                stride_desc = f"abs={stride_abs}el"
             print(f"  [{i+1:4d}] {src_name:>3s} {dtype_name:>7s} {access_name:>10s} "
-                  f"stride={cfg['stride']:>3d} lanes={1<<cfg['lane_bits']:>3d} "
+                  f"stride=[{stride_desc}] "
+                  f"lanes={1<<cfg['lane_bits']:>3d} "
                   f"threads={cfg['thread_num']:>4d} blocks={cfg['block_num']:>3d} "
                   f"align={cfg['align_offset']} size={cfg['data_size_mb']}MB")
         return

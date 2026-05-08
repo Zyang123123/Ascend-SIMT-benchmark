@@ -22,7 +22,8 @@
 #define BITS_MOVE 9
 // Unroll factor
 #define UNROLL_LOOP 4
-// Stride between unrolled accesses (in elements)
+// Stride between consecutive burst accesses (in elements)
+// Contiguous: STRIDE = LANE_MASK+1; Non-contiguous: STRIDE > LANE_MASK+1
 #define STRIDE 32
 // Alignment offset in elements (0 = aligned)
 #define ALIGNMENT_OFFSET 0
@@ -77,8 +78,8 @@ __inline__ __simt_vf__ LAUNCH_BOUND(THREAD_NUM) [aicore] void bandwidth_simt(
   int linear_tid = threadIdx.x;
   int tid_x = linear_tid & LANE_MASK;
   int tid_y = linear_tid >> BITS_MOVE;
-  constexpr int burst_stride = (LANE_MASK + 1) * UNROLL_LOOP;
-  int block_stride = blockDim.x * UNROLL_LOOP;
+  constexpr int burst_stride = STRIDE * UNROLL_LOOP;
+  constexpr int block_stride = (THREAD_NUM / (LANE_MASK + 1)) * burst_stride;
 
   bench_dtype dummy_sum = static_cast<bench_dtype>(0);
 
@@ -87,7 +88,8 @@ __inline__ __simt_vf__ LAUNCH_BOUND(THREAD_NUM) [aicore] void bandwidth_simt(
   #if SRC_MEMORY == 1
   // L2 warmup: touch data once before measuring
   for (int64_t wi = my_block_idx * block_stride + tid_y * burst_stride + tid_x;
-       wi < total_count; wi += my_block_num * block_stride) {
+       wi + (int64_t)(UNROLL_LOOP - 1) * STRIDE < total_count;
+       wi += my_block_num * block_stride) {
     #pragma unroll
     for (int k = 0; k < UNROLL_LOOP; ++k) {
       dummy_sum += input_gm[wi + k * STRIDE];
@@ -99,7 +101,7 @@ __inline__ __simt_vf__ LAUNCH_BOUND(THREAD_NUM) [aicore] void bandwidth_simt(
 
   for (int r = 0; r < repeat; ++r) {
     for (int64_t i = my_block_idx * block_stride + tid_y * burst_stride + tid_x + ALIGNMENT_OFFSET;
-         i < total_count;
+         i + (int64_t)(UNROLL_LOOP - 1) * STRIDE < total_count;
          i += my_block_num * block_stride) {
       bench_dtype data[UNROLL_LOOP];
       #pragma unroll
@@ -120,7 +122,7 @@ __inline__ __simt_vf__ LAUNCH_BOUND(THREAD_NUM) [aicore] void bandwidth_simt(
     bench_dtype fill_val = static_cast<bench_dtype>(1.0);
     for (int r = 0; r < repeat; ++r) {
       for (int64_t i = my_block_idx * block_stride + tid_y * burst_stride + tid_x + ALIGNMENT_OFFSET;
-           i < total_count;
+           i + (int64_t)(UNROLL_LOOP - 1) * STRIDE < total_count;
            i += my_block_num * block_stride) {
         #pragma unroll
         for (int k = 0; k < UNROLL_LOOP; ++k) {
