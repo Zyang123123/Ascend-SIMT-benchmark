@@ -1,0 +1,4 @@
+# No external dependencies required.
+# run_benchmark.py uses only Python standard library modules:
+#   os, sys, copy, shutil, subprocess, argparse, csv, re, time,
+#   itertools, datetime, pathlib

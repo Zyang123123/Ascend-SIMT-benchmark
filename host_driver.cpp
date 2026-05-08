@@ -132,16 +132,16 @@ void run_benchmark(int64_t data_size_mb, int block_num, int repeat, int device_i
     rtError_t error;
     rtStream_t stream;
 
+    error = rtSetDevice(device_id);
+    if (error) {
+        fprintf(stderr, "rtSetDevice(%d) failed: %d\n", device_id, error);
+        return;
+    }
+
     char *buffer = nullptr;
     std::string ret = RegisterBinaryKernel(func_name, bin_file, &buffer);
     if (ret != "true") {
         fprintf(stderr, "RegisterBinaryKernel failed: %s\n", ret.c_str());
-        return;
-    }
-
-    error = rtSetDevice(device_id);
-    if (error) {
-        fprintf(stderr, "rtSetDevice(%d) failed: %d\n", device_id, error);
         return;
     }
 
@@ -248,6 +248,9 @@ int main(int argc, char *argv[]) {
     printf("device cnt = %d\n", device_cnt);
 
     run_benchmark(data_size_mb, block_num, repeat, device_id);
+
+    error = rtDeviceReset(device_id);
+    EXPECT_EQ(error, RT_ERROR_NONE);
 
     aclFinalize();
     return 0;

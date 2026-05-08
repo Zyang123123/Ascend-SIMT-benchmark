@@ -160,14 +160,15 @@ def run_benchmark(block_num, data_size_mb, repeat, device_id=0, use_msprof=False
         ] + cmd
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        result = subprocess.run(cmd, text=True, timeout=300,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     except subprocess.TimeoutExpired:
         print("  [ERROR] Benchmark timed out")
         return None
 
     if result.returncode != 0:
         print(f"  [ERROR] Benchmark failed (exit code {result.returncode})")
-        print(f"    stderr: {result.stderr[-300:]}")
+        print(f"    output: {result.stdout[-300:]}")
         return None
 
     # Parse BANDWIDTH_RESULT line
@@ -181,7 +182,7 @@ def run_benchmark(block_num, data_size_mb, repeat, device_id=0, use_msprof=False
                     "bandwidth_gbs": float(parts[3]),
                 }
     print("  [WARN] Could not parse BANDWIDTH_RESULT from output")
-    print(f"    stdout: {result.stdout[-300:]}")
+    print(f"    output: {result.stdout[-300:]}")
     return None
 
 

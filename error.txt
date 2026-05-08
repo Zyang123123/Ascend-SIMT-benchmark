@@ -1,0 +1,26 @@
+(simt-env) (base) root@huawei:/home/j00930424/Benchmark/Ascend-SIMT-benchmark# python3 run_benchmark.py
+
+Starting benchmark sweep...
+  Configurations: 1
+  Compilations:   1
+  Device:         0
+  msprof:         False
+
+Total test configurations: 1
+Unique compilations needed: 1
+
+================================================================
+Compile: dtype=fp16 access=read_only stride=32 lanes=512 threads=1024 align=0
+================================================================
+
+[1/1] blocks=64 size=512MB repeat=5
+  [ERROR] Benchmark timed out
+  => FAILED
+
+================================================================
+Benchmark sweep complete!
+  Total time:  301.7s
+  Results:     1 rows
+  Successful:  0
+  Failed:      1
+  Output CSV:  /home/j00930424/Benchmark/Ascend-SIMT-benchmark/results/benchmark_20260508_021508.csv
