@@ -52,14 +52,14 @@ from pathlib import Path
 
 DEFAULT_SWEEP = {
     "src_memory":   [0],                   # 0=GM, 1=L2(cache warmup)
-    "data_type":    [0],                   # 0=fp16, 1=float32, 2=int64
+    "data_type":    [2],                   # 0=fp16, 1=float32, 2=int64
     "access_mode":  [0],                   # 0=read, 1=write, 2=readwrite
     "stride_factor": [1],                  # >0: STRIDE = factor * 2^lane_bits; 0: use absolute stride below
-    "stride":       [0],                   # absolute stride in elements (only used when stride_factor=0)
+    "stride":       [1200],                   # absolute stride in elements (only used when stride_factor=0)
     "lane_bits":    [9],                   # LANE_MASK bits (3..9)
     "unroll_loop":  [4],                   # unroll factor for inner loop
-    "thread_num":   [1024],                # threads per block
-    "block_num":    [64],                  # number of blocks (host-side)
+    "thread_num":   [256,512,1024],                # threads per block
+    "block_num":    [128],                  # number of blocks (host-side)
     "align_offset": [0],                   # alignment offset (0=aligned)
     "data_size_mb": [512],                 # buffer size in MB
     "repeat":       [5],                   # timing iterations

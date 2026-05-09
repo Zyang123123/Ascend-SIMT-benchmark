@@ -84,7 +84,7 @@ __inline__ __simt_vf__ LAUNCH_BOUND(THREAD_NUM) [aicore] void bandwidth_simt(
   bench_dtype dummy_sum = static_cast<bench_dtype>(0);
 
   // ---- READ path (read-only and read+write) ----
-#if ACCESS_MODE == ACCESS_READ_ONLY || ACCESS_MODE == ACCESS_READ_WRITE
+#if ACCESS_MODE == ACCESS_READ_ONLY
   #if SRC_MEMORY == 1
   // L2 warmup: touch data once before measuring
   for (int64_t wi = my_block_idx * block_stride + tid_y * burst_stride + tid_x;
@@ -114,10 +114,12 @@ __inline__ __simt_vf__ LAUNCH_BOUND(THREAD_NUM) [aicore] void bandwidth_simt(
       }
     }
   }
+  // Write checksum to prevent dead-code elimination
+  output_gm[linear_tid + my_block_idx * blockDim.x] = dummy_sum;
 #endif
 
   // ---- WRITE path (write-only and read+write) ----
-#if ACCESS_MODE == ACCESS_WRITE_ONLY || ACCESS_MODE == ACCESS_READ_WRITE
+#if ACCESS_MODE == ACCESS_WRITE_ONLY
   {
     bench_dtype fill_val = static_cast<bench_dtype>(1.0);
     for (int r = 0; r < repeat; ++r) {
@@ -132,7 +134,20 @@ __inline__ __simt_vf__ LAUNCH_BOUND(THREAD_NUM) [aicore] void bandwidth_simt(
     }
   }
 #endif
-  // Write checksum to prevent dead-code elimination
-  output_gm[linear_tid + my_block_idx * blockDim.x] = dummy_sum;
+
+#if ACCESS_MODE == ACCESS_READ_WRITE
+  for (int r = 0; r < repeat; ++r) {
+    for (int64_t i = my_block_idx * block_stride + tid_y * burst_stride + tid_x + ALIGNMENT_OFFSET;
+         i + (int64_t)(UNROLL_LOOP - 1) * STRIDE < total_count;
+         i += my_block_num * block_stride) {
+      // bench_dtype data[UNROLL_LOOP];
+      #pragma unroll
+      for (int k = 0; k < UNROLL_LOOP; ++k) {
+        output_gm[i + k * STRIDE] = input_gm[i + k * STRIDE];
+      }
+    }
+  }
+#endif
+
   __syncthreads();
 }
