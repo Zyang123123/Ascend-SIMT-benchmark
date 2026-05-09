@@ -18,8 +18,9 @@ HOST_SRC="${2:-host_driver.cpp}"
 DTYPE_ENUM="${3:-0}"
 
 # Source CANN environment if not already set
-# source /home/w00951285/Ascend/cann8.3/8.3.RC1/bin/setenv.bash
-# export ASCEND_HOME_PATH=/home/w00951285/Ascend/cann8.3/8.3.RC1
+# source /home/j00930424/simt-env/bin/activate
+# source /home/j00930424/Ascend/cann8.3/8.3.RC1/bin/setenv.bash
+# export ASCEND_HOME_PATH=/home/j00930424/Ascend/cann8.3/8.3.RC1
 
 if [ -z "${ASCEND_HOME_PATH}" ]; then
     echo "ERROR: ASCEND_HOME_PATH is not set. Please source CANN setenv.bash first."
