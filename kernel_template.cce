@@ -85,19 +85,19 @@ __inline__ __simt_vf__ LAUNCH_BOUND(THREAD_NUM) [aicore] void bandwidth_simt(
 
   // ---- READ path (read-only and read+write) ----
 #if ACCESS_MODE == ACCESS_READ_ONLY
-  #if SRC_MEMORY == 1
-  // L2 warmup: touch data once before measuring
-  for (int64_t wi = my_block_idx * block_stride + tid_y * burst_stride + tid_x;
-       wi + (int64_t)(UNROLL_LOOP - 1) * STRIDE < total_count;
-       wi += my_block_num * block_stride) {
-    #pragma unroll
-    for (int k = 0; k < UNROLL_LOOP; ++k) {
-      dummy_sum += input_gm[wi + k * STRIDE];
-    }
-  }
-  // Reset sum after warmup
-  dummy_sum = static_cast<bench_dtype>(0);
-  #endif
+  // #if SRC_MEMORY == 1
+  // // L2 warmup: touch data once before measuring
+  // for (int64_t wi = my_block_idx * block_stride + tid_y * burst_stride + tid_x;
+  //      wi + (int64_t)(UNROLL_LOOP - 1) * STRIDE < total_count;
+  //      wi += my_block_num * block_stride) {
+  //   #pragma unroll
+  //   for (int k = 0; k < UNROLL_LOOP; ++k) {
+  //     dummy_sum += input_gm[wi + k * STRIDE];
+  //   }
+  // }
+  // // Reset sum after warmup
+  // dummy_sum = static_cast<bench_dtype>(0);
+  // #endif
 
   for (int r = 0; r < repeat; ++r) {
     for (int64_t i = my_block_idx * block_stride + tid_y * burst_stride + tid_x + ALIGNMENT_OFFSET;

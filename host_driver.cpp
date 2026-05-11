@@ -1,11 +1,12 @@
 // ============================================================
 // Ascend DV100 SIMT Bandwidth Benchmark - Host Driver
 // ============================================================
-// Usage: ./host [data_size_mb] [block_num] [repeat] [device_id]
+// Usage: ./host [data_size_mb] [block_num] [repeat] [device_id] [loop_num]
 //   data_size_mb : total buffer size in MB (default 512)
 //   block_num    : number of blocks to launch (default 64)
 //   repeat       : kernel repeat count (default 5)
 //   device_id    : Ascend device ID (default 0)
+//   loop_num: inner kernel repeat for L2 test (default 1)
 //
 // Output format (stdout, one line per metric):
 //   BANDWIDTH_RESULT,<bytes_moved>,<time_us>,<bandwidth_gbs>,<data_type_enum>,<access_mode>
@@ -111,14 +112,15 @@ std::string RegisterBinaryKernel(const char *func_name, const char *bin_file, ch
 }
 
 void print_usage(const char *prog) {
-    fprintf(stderr, "Usage: %s [data_size_mb] [block_num] [repeat] [device_id]\n", prog);
+    fprintf(stderr, "Usage: %s [data_size_mb] [block_num] [repeat] [device_id] [loop_num]\n", prog);
     fprintf(stderr, "  data_size_mb : buffer size in MB (default 512)\n");
     fprintf(stderr, "  block_num    : number of blocks (default 64)\n");
     fprintf(stderr, "  repeat       : kernel repeat iterations for timing (default 5)\n");
     fprintf(stderr, "  device_id    : Ascend device ID (default 0)\n");
+    fprintf(stderr, "  loop_num: inner kernel repeat, e.g. 100 for L2 test (default 1)\n");
 }
 
-void run_benchmark(int64_t data_size_mb, int block_num, int repeat, int device_id) {
+void run_benchmark(int64_t data_size_mb, int block_num, int repeat, int device_id, int loop_num) {
     const char *func_name = "dv100_bandwidth_test";
     const char *bin_file = "bench_kernel.o";
 
@@ -176,7 +178,7 @@ void run_benchmark(int64_t data_size_mb, int block_num, int repeat, int device_i
     kernel_args.input_device = x0_hbm;
     kernel_args.output_device = y0_hbm;
     kernel_args.test_size = aligned_elements;
-    kernel_args.repeat = 1;  // repeat is handled inside the timed loop below
+    kernel_args.repeat = loop_num;
 
     rtArgsEx_t argsInfo = {};
     argsInfo.args = static_cast<void*>(&kernel_args);
@@ -205,7 +207,7 @@ void run_benchmark(int64_t data_size_mb, int block_num, int repeat, int device_i
 
     unsigned long long duration_us = (endTime - startTime) / repeat;
     double bandwidth_gbs = (double)(aligned_elements * HOST_DTYPE_SIZE) * 1000000.0
-                           / (double)duration_us / 1024.0 / 1024.0 / 1024.0;
+                           / (double)duration_us / kernel_args.repeat / 1024.0 / 1024.0 / 1024.0;
 
     // Structured output for automated parsing
     printf("BANDWIDTH_RESULT,%.0f,%llu,%.3f,%d,%d\n",
@@ -231,6 +233,7 @@ int main(int argc, char *argv[]) {
     int block_num        = (argc > 2) ? atoi(argv[2])  : 64;
     int repeat           = (argc > 3) ? atoi(argv[3])  : 5;
     int device_id        = (argc > 4) ? atoi(argv[4])  : 0;
+    int loop_num    = (argc > 5) ? atoi(argv[5])  : 1;
 
     aclInit(nullptr);
 
@@ -238,7 +241,7 @@ int main(int argc, char *argv[]) {
     rtError_t error = rtGetDeviceCount(&device_cnt);
     printf("device cnt = %d\n", device_cnt);
 
-    run_benchmark(data_size_mb, block_num, repeat, device_id);
+    run_benchmark(data_size_mb, block_num, repeat, device_id, loop_num);
 
     error = rtDeviceReset(device_id);
     EXPECT_EQ(error, RT_ERROR_NONE);

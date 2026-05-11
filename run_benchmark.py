@@ -153,9 +153,9 @@ def compile_kernel(dtype_enum):
 # ============================================================
 # Run
 # ============================================================
-def run_benchmark(block_num, data_size_mb, repeat, device_id=0, use_msprof=False):
+def run_benchmark(block_num, data_size_mb, repeat, device_id=0, use_msprof=False, loop_num=1):
     """Run the benchmark binary and return parsed result."""
-    cmd = [str(HOST_BINARY), str(data_size_mb), str(block_num), str(repeat), str(device_id)]
+    cmd = [str(HOST_BINARY), str(data_size_mb), str(block_num), str(repeat), str(device_id), str(loop_num)]
 
     if use_msprof:
         prof_dir = str(RESULTS_DIR / "msprof")
@@ -347,9 +347,10 @@ def run_sweep(sweep_config, selected_factors=None, use_msprof=False, device_id=0
         # Run each config in this compile group
         for cfg in group_configs:
             test_num += 1
+            loop_num = 100 if cfg["src_memory"] == 1 else 1
             print(f"\n[{test_num}/{total}] "
                   f"blocks={cfg['block_num']} size={cfg['data_size_mb']}MB "
-                  f"repeat={cfg['repeat']}")
+                  f"repeat={cfg['repeat']} loop_num={loop_num}")
 
             result = run_benchmark(
                 block_num=cfg["block_num"],
@@ -357,6 +358,7 @@ def run_sweep(sweep_config, selected_factors=None, use_msprof=False, device_id=0
                 repeat=cfg["repeat"],
                 device_id=device_id,
                 use_msprof=use_msprof,
+                loop_num=loop_num,
             )
 
             row = config_to_row(cfg, result)
@@ -380,13 +382,13 @@ PRESETS = {
         "data_type":    [0, 1, 2],
         "access_mode":  [0, 1, 2],
         "stride_factor": [1],
-        "stride":       [0],
-        "lane_bits":    [3, 5, 7, 9],
+        "stride":       [1200],
+        "lane_bits":    [3, 4, 5, 6, 7, 8, 9],
         "unroll_loop":  [4],
-        "thread_num":   [512, 1024],
-        "block_num":    [32, 64, 128],
+        "thread_num":   [256, 512, 1024, 2048],
+        "block_num":    [16, 32, 64, 128],
         "align_offset": [0],
-        "data_size_mb": [512],
+        "data_size_mb": [0.0625, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512],
         "repeat":       [5],
     },
     "dtype_sweep": {
