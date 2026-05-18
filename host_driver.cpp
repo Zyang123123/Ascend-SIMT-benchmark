@@ -42,6 +42,13 @@
 #elif HOST_DTYPE_ENUM == 2
   typedef int64_t host_dtype;
   #define HOST_DTYPE_SIZE 8
+#elif HOST_DTYPE_ENUM == 3
+  struct HostFloat4 {
+    float x, y, z, w;
+    HostFloat4(float v = 0) : x(v), y(v), z(v), w(v) {}
+  };
+  typedef HostFloat4 host_dtype;
+  #define HOST_DTYPE_SIZE 16
 #else
   #error "Unsupported HOST_DTYPE_ENUM"
 #endif

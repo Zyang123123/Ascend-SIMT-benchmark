@@ -72,6 +72,7 @@ DTYPE_INFO = {
     0: {"name": "fp16",    "size": 2, "cce_type": "__fp16",  "host_type": "uint16_t"},
     1: {"name": "float32", "size": 4, "cce_type": "float",   "host_type": "float"},
     2: {"name": "int64",   "size": 8, "cce_type": "int64_t", "host_type": "int64_t"},
+    3: {"name": "float4",  "size": 16, "cce_type": "float4_s", "host_type": "HostFloat4"},
 }
 
 ACCESS_MODE_NAMES = {0: "read_only", 1: "write_only", 2: "read_write"}
