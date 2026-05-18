@@ -52,16 +52,16 @@ from pathlib import Path
 
 DEFAULT_SWEEP = {
     "src_memory":   [0],                   # 0=GM, 1=L2(cache warmup)
-    "data_type":    [2],                   # 0=fp16, 1=float32, 2=int64
+    "data_type":    [2,3],                   # 0=fp16, 1=float32, 2=int64
     "access_mode":  [0],                   # 0=read, 1=write, 2=readwrite
     "stride_factor": [1],                  # >0: STRIDE = factor * 2^lane_bits; 0: use absolute stride below
     "stride":       [1200],                   # absolute stride in elements (only used when stride_factor=0)
-    "lane_bits":    [9],                   # LANE_MASK bits (3..9)
+    "lane_bits":    [5],                   # LANE_MASK bits (3..9)
     "unroll_loop":  [4],                   # unroll factor for inner loop
-    "thread_num":   [256,512,1024],                # threads per block
-    "block_num":    [128],                  # number of blocks (host-side)
+    "thread_num":   [1024],                # threads per block
+    "block_num":    [64],                  # number of blocks (host-side)
     "align_offset": [0],                   # alignment offset (0=aligned)
-    "data_size_mb": [512],                 # buffer size in MB
+    "data_size_mb": [64,128,256,512,1024,2048],                 # buffer size in MB   32,64,128,256,512,1024,2048
     "repeat":       [5],                   # timing iterations
 }
 
@@ -167,6 +167,7 @@ def run_benchmark(block_num, data_size_mb, repeat, device_id=0, use_msprof=False
             "--aic-mode=task-based",
         ] + cmd
 
+    # 批量测试下开启
     try:
         result = subprocess.run(cmd, text=True, timeout=300,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -181,6 +182,30 @@ def run_benchmark(block_num, data_size_mb, repeat, device_id=0, use_msprof=False
 
     # Parse BANDWIDTH_RESULT line
     for line in result.stdout.splitlines():
+    # # debug模式下开启
+    # try:
+    #     proc = subprocess.Popen(cmd, text=True,
+    #                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    #                             bufsize=1)
+    #     output_lines = []
+    #     for line in proc.stdout:
+    #         line = line.rstrip("\n")
+    #         print(f"    {line}")
+    #         output_lines.append(line)
+    #     proc.wait(timeout=300)
+    # except subprocess.TimeoutExpired:
+    #     proc.kill()
+    #     print("  [ERROR] Benchmark timed out")
+    #     return None
+
+    # if proc.returncode != 0:
+    #     output_tail = "\n".join(output_lines[-5:])
+    #     print(f"  [ERROR] Benchmark failed (exit code {proc.returncode})")
+    #     print(f"    output: {output_tail}")
+    #     return None
+
+    # # Parse BANDWIDTH_RESULT line
+    # for line in output_lines:
         if line.startswith("BANDWIDTH_RESULT,"):
             parts = line.strip().split(",")
             if len(parts) >= 4:

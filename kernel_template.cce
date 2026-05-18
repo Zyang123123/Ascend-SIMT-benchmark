@@ -40,16 +40,7 @@
   typedef int64_t bench_dtype;
   #define DTYPE_SIZE 8
 #elif DATA_TYPE_ENUM == 3
-  struct __attribute__((aligned(16))) float4_s {
-    float x, y, z, w;
-    float4_s(float v = 0) : x(v), y(v), z(v), w(v) {}
-    float4_s& operator+=(const float4_s& o) {
-      x += o.x; y += o.y; z += o.z; w += o.w;
-      return *this;
-    }
-  };
-  typedef float4_s bench_dtype;
-  // typedef float4 bench_dtype;
+  typedef float4 bench_dtype;
   #define DTYPE_SIZE 16
 #else
   #error "Unsupported DATA_TYPE_ENUM"
@@ -93,7 +84,7 @@ __inline__ __simt_vf__ LAUNCH_BOUND(THREAD_NUM) [aicore] void bandwidth_simt(
   constexpr int burst_stride = STRIDE * UNROLL_LOOP;
   constexpr int block_stride = (THREAD_NUM / (LANE_MASK + 1)) * burst_stride;
 
-  bench_dtype dummy_sum = static_cast<bench_dtype>(0);
+  bench_dtype dummy_sum = bench_dtype{};
 
   // ---- READ path (read-only and read+write) ----
 #if ACCESS_MODE == ACCESS_READ_ONLY

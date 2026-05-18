@@ -154,25 +154,27 @@ void run_benchmark(int64_t data_size_mb, int block_num, int repeat, int device_i
         return;
     }
 
+    int warm_up = 1;
+
     error = rtStreamCreate(&stream, 0);
     EXPECT_EQ(error, RT_ERROR_NONE);
 
     uint16_t ModuleId = 0;
     void *x0_hbm = NULL;
     void *y0_hbm = NULL;
-    error = rtMalloc((void **)&x0_hbm, aligned_elements * HOST_DTYPE_SIZE, RT_MEMORY_HBM, ModuleId);
+    error = rtMalloc((void **)&x0_hbm, aligned_elements * HOST_DTYPE_SIZE * (repeat+warm_up), RT_MEMORY_HBM, ModuleId);
     EXPECT_EQ(error, RT_ERROR_NONE);
-    error = rtMalloc((void **)&y0_hbm, aligned_elements * HOST_DTYPE_SIZE, RT_MEMORY_HBM, ModuleId);
+    error = rtMalloc((void **)&y0_hbm, aligned_elements * HOST_DTYPE_SIZE * (repeat+warm_up), RT_MEMORY_HBM, ModuleId);
     EXPECT_EQ(error, RT_ERROR_NONE);
 
     // Initialize input data
-    std::vector<host_dtype> x0_data(aligned_elements);
+    std::vector<host_dtype> x0_data(aligned_elements * (repeat+warm_up));
     std::srand(std::time(nullptr));
     std::generate_n(x0_data.begin(), x0_data.size(),
         [](){ return static_cast<host_dtype>(float(std::rand() % 100) / 100.f); });
 
-    error = rtMemcpy(x0_hbm, aligned_elements * HOST_DTYPE_SIZE,
-        x0_data.data(), aligned_elements * HOST_DTYPE_SIZE, RT_MEMCPY_HOST_TO_DEVICE);
+    error = rtMemcpy(x0_hbm, aligned_elements * HOST_DTYPE_SIZE * (repeat+warm_up),
+        x0_data.data(), aligned_elements * HOST_DTYPE_SIZE * (repeat+warm_up), RT_MEMCPY_HOST_TO_DEVICE);
     EXPECT_EQ(error, RT_ERROR_NONE);
 
     struct KernelArgs {
@@ -194,27 +196,63 @@ void run_benchmark(int64_t data_size_mb, int block_num, int repeat, int device_i
     cfgInfo.localMemorySize = 128 * 1024;
 
     // Warmup launch
-    error = rtKernelLaunchWithFlagV2((void *)func_name, block_num, &argsInfo, NULL, stream, 0, &cfgInfo);
-    EXPECT_EQ(error, RT_ERROR_NONE);
+    for (int i = 0; i < warm_up; ++i) {
+        error = rtKernelLaunchWithFlagV2((void *)func_name, block_num, &argsInfo, NULL, stream, 0, &cfgInfo);
+        EXPECT_EQ(error, RT_ERROR_NONE);
+        kernel_args.input_device = (char*)kernel_args.input_device + aligned_elements * HOST_DTYPE_SIZE;
+        kernel_args.output_device = (char*)kernel_args.output_device + aligned_elements * HOST_DTYPE_SIZE;
+    }
     error = rtStreamSynchronize(stream);
     EXPECT_EQ(error, RT_ERROR_NONE);
 
     // Timed launches
-    unsigned long long startTime, endTime;
-    startTime = currentTime();
+    unsigned long long total_time = 0;
+    rtEvent_t start_event, stop_event;
+    rtEventCreate(&start_event);
+    rtEventCreate(&stop_event);
 
     for (int i = 0; i < repeat; ++i) {
-        error = rtKernelLaunchWithFlagV2((void *)func_name, block_num, &argsInfo, NULL, stream, 0, &cfgInfo);
+        // system("devmem 0x421F020900 32 0x4A00000");
+        // system("devmem 0x431F020900 32 0x4A00000");
+        
+        // system("devmem 0x421F020014 32 0xF801EF75");
+        // system("devmem 0x431F020014 32 0xF801EF75");
+        // int ret = system("devmem 0x431F020900 32");
+        // if (ret == 0) {
+        //     printf("命令执行成功\n");
+        // } else {
+        //     printf("命令执行失败，返回值：%d\n", ret);
+        // }
+
+        rtEventRecord(start_event, stream);
+        error = rtKernelLaunchWithFlagV2((void *)func_name, block_num, 
+                                        &argsInfo, NULL, stream, 0, &cfgInfo);
         EXPECT_EQ(error, RT_ERROR_NONE);
+        rtEventRecord(stop_event, stream);
+        
+        rtEventSynchronize(stop_event);  // 等待完成
+
+        // system("devmem 0x421F020900 32");
+        // system("devmem 0x431F020900 32");        
+        
+        float ms = 0;
+        rtEventElapsedTime(&ms, start_event, stop_event);
+        total_time += (unsigned long long)(ms * 1000);  // 转换为微秒
+        
+        kernel_args.input_device = (char*)kernel_args.input_device + aligned_elements * HOST_DTYPE_SIZE;
+        kernel_args.output_device = (char*)kernel_args.output_device + aligned_elements * HOST_DTYPE_SIZE;
     }
+
+    rtEventDestroy(start_event);
+    rtEventDestroy(stop_event);
 
     error = rtStreamSynchronize(stream);
     EXPECT_EQ(error, RT_ERROR_NONE);
-    endTime = currentTime();
+    // endTime = currentTime();
 
-    unsigned long long duration_us = (endTime - startTime) / repeat;
-    double bandwidth_gbs = (double)(aligned_elements * HOST_DTYPE_SIZE) * 1000000.0
-                           / (double)duration_us / kernel_args.repeat / 1024.0 / 1024.0 / 1024.0;
+    unsigned long long duration_us = total_time / repeat;
+    double bandwidth_gbs = (double)(aligned_elements * HOST_DTYPE_SIZE) * (double)kernel_args.repeat * 1000000.0
+                           / (double)duration_us / 1024.0 / 1024.0 / 1024.0;
 
     // Structured output for automated parsing
     printf("BANDWIDTH_RESULT,%.0f,%llu,%.3f,%d,%d\n",
